@@ -1,0 +1,1 @@
+from .core import random_permutation
