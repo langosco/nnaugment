@@ -33,10 +33,17 @@ input_tensor = torch.randn(batch_size, 1, 28, 28)
 @pytest.mark.parametrize("params", all_params)
 def test_weight_augmentation(params):
     params = import_params(params, from_naming_scheme="pytorch")
+    layers_to_permute=['Conv2d_0', 'Conv2d_1', 'Dense_2']
     augmented_params = nnaugment.random_permutation(
         params,
-        layers_to_permute=['Conv2d_0', 'Conv2d_1', 'Dense_2'],
+        layers_to_permute=layers_to_permute,
     )
+
+    # Check non-equality of augmented model's parameters against the original
+    for name, layer in augmented_params.items():
+        if name in layers_to_permute:
+            assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=5e-2), \
+                f"Parameters {name} are almost identical after augmentation."
 
     model = get_pytorch_model(export_params(params))
     model.eval()

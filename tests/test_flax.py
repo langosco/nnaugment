@@ -3,6 +3,7 @@ from flax import linen as nn
 import jax.numpy as jnp
 import jax.random as random
 import nnaugment
+import numpy as np
 
 
 class SimpleMLP(nn.Module):
@@ -45,6 +46,7 @@ def test_weight_augmentation(seed,
     variables = model.init(rng, x)
     initial_output = model.apply(variables, x)
 
+
     # Augment weights
     if isinstance(model, SimpleMLP):
         layers_to_permute = ["Dense_0", "Dense_1"]
@@ -58,6 +60,12 @@ def test_weight_augmentation(seed,
         layers_to_permute=layers_to_permute,
         convention="flax")
     augmented_variables = {'params': augmented_params}
+
+    # Check non-equality of augmented model's parameters against the original
+    for name, layer in augmented_params.items():
+        if name in layers_to_permute:
+            assert not np.allclose(layer["kernel"], variables['params'][name]["kernel"], rtol=5e-2), \
+                f"Parameters {name} are almost identical after augmentation."
 
     # Check for unchanged output
     augmented_output = model.apply(augmented_variables, x)
