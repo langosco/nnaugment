@@ -162,6 +162,7 @@ def permute_layer_and_next(layers: List[dict],
 
 def random_permutation(params: dict, 
                        layers_to_permute: list,
+                       rng: np.random.Generator = None,
                        convention: str = "pytorch") -> dict:
     """
     Permute all layers in layers_to_permute with a random permutation.
@@ -172,7 +173,12 @@ def random_permutation(params: dict,
     the output of a conv + flatten layer is different in pytorch and flax,
     since channels vs features are flattened in a different order.
     """
+    # TODO I think I can get rid of the need for 'convention' by permuting 
+    # linear layers following a flatten layer when standardizing weight representations
+    # to flax convention.
     layer_names = list(params.keys())
+    if rng is None:
+        rng = np.random.default_rng()
 
     p_params = params.copy()
     for i, k in enumerate(layer_names):
@@ -188,7 +194,7 @@ def random_permutation(params: dict,
             else:
                 layer_group = [k, layer_names[i+1]]
 
-            permutation = np.random.permutation(p_params[k]["kernel"].shape[-1])
+            permutation = rng.permutation(p_params[k]["kernel"].shape[-1])
 
             permuted_layers = permute_layer_and_next(
                 layers=[p_params[name] for name in layer_group], 

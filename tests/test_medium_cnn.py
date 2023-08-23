@@ -34,15 +34,17 @@ all_params = np.concatenate([inputs, targets], axis=0)
 
 batch_size = 5
 input_tensor = torch.randn(batch_size, 3, 32, 32)
+rng = np.random.default_rng(0)
+layers_to_permute=[f'Conv2d_{i}' for i in range(6)] + ['Dense_6']
 
 
 @pytest.mark.parametrize("params", all_params)
 def test_weight_augmentation(params):
     params = import_params(params, from_naming_scheme="pytorch")
-    layers_to_permute=[f'Conv2d_{i}' for i in range(6)] + ['Dense_6']
     augmented_params = nnaugment.random_permutation(
         params,
         layers_to_permute=layers_to_permute,
+        rng=rng,
     )
 
     # Check non-equality of augmented model's parameters against the original
@@ -66,3 +68,39 @@ def test_weight_augmentation(params):
              f"Differences: {torch.abs(output - perm_output)}")
 
 
+
+@pytest.mark.parametrize("params", all_params)
+def test_determinism(params):
+    """Test that the augmentation is deterministic, ie I can
+    get the same permutation by setting the seed."""
+    params = import_params(params, from_naming_scheme="pytorch")
+
+    rng_state = rng.bit_generator.state
+
+    rng_0 = np.random.default_rng()
+    rng_1 = np.random.default_rng()
+
+    rng_0.bit_generator.state = rng_state
+    rng_1.bit_generator.state = rng_state
+
+    augmented_params_0 = nnaugment.random_permutation(
+        params,
+        layers_to_permute=layers_to_permute,
+        rng=rng_0,
+    )
+
+
+    augmented_params_1 = nnaugment.random_permutation(
+        params,
+        layers_to_permute=layers_to_permute,
+        rng=rng_1,
+    )
+
+    # Check non-equality of augmented model's parameters against the original
+    for name, layer in augmented_params_0.items():
+        comparison_layer = augmented_params_1[name]
+        assert np.allclose(layer["kernel"], comparison_layer["kernel"], rtol=1e-3), \
+            f"Parameters in {name} differ despite same seed."
+
+        assert np.allclose(layer["bias"], comparison_layer["bias"], rtol=1e-3), \
+            f"Parameters in {name} differ despite same seed."
