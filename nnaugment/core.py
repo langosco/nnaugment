@@ -7,6 +7,7 @@ import numpy as np
 from meta_transformer import torch_utils, module_path
 import flax.linen as nn
 from einops import rearrange
+from typing import List
 
 # just linear layers for now
 # IMPORTANT ASSUMPTION: the layers are numbered consecutively and ordered
@@ -80,6 +81,17 @@ def permute_conv_layer(layer: dict,
     return {"kernel": w_perm, "bias": b_perm}
 
 
+def permute_batchnorm_layer(layer: dict,
+                            permutation: ArrayLike):
+    assert permutation is not None
+    assert len(permutation) == len(layer["var"])
+    w_perm = layer["kernel"][permutation]
+    b_perm = layer["bias"][permutation]
+    m_perm = layer["mean"][permutation]
+    v_perm = layer["var"][permutation]
+    return {"kernel": w_perm, "bias": b_perm, "mean": m_perm, "var": v_perm}
+
+
 def get_linear_permutation_from_conv(
         permutation: ArrayLike, 
         next_layer: dict, 
@@ -110,33 +122,42 @@ def get_linear_permutation_from_conv(
     return out
 
 
-def permute_layer_and_next(layer: dict, 
-                           next_layer: dict, 
-                           name: str, 
-                           next_name: str,
+def permute_layer_and_next(layers: List[dict],
+                           names: List[str],
                            permutation: ArrayLike,
                            convention: str = "pytorch"):
     """Permute the weights of layer (effectively re-ordering the output),
     then permute the weights of next_layer (re-ordering the input to match).
+
+    This function expects len(layers) == len(names) == 2, except when
+    the second layer is a batchnorm layer, in which case len(layers) == 3.
     
     Currently this requires an awkward case distinction between conv
     and dense layers (that's why this function also takes the layer names).
     """
-    if 'Conv' in name and 'Conv' in next_name:
-        layer_perm = permute_conv_layer(layer, permutation, mode="output")
-        next_layer_perm = permute_conv_layer(next_layer, permutation, mode="input")
-    elif 'Dense' in name and 'Dense' in next_name:
-        layer_perm = permute_linear_layer(layer, permutation, mode="output")
-        next_layer_perm = permute_linear_layer(next_layer, permutation, mode="input")
-    elif 'Conv' in name and 'Dense' in next_name:
-        layer_perm = permute_conv_layer(layer, permutation, mode="output")
+    assert len(layers) == len(names)
+    assert len(layers) in [2, 3]
+    if 'Conv' in names[0] and 'Conv' in names[-1]:
+        layer_perm = permute_conv_layer(layers[0], permutation, mode="output")
+        next_layer_perm = permute_conv_layer(layers[-1], permutation, mode="input")
+    elif 'Dense' in names[0] and 'Dense' in names[-1]:
+        layer_perm = permute_linear_layer(layers[0], permutation, mode="output")
+        next_layer_perm = permute_linear_layer(layers[-1], permutation, mode="input")
+    elif 'Conv' in names[0] and 'Dense' in names[-1]:
+        layer_perm = permute_conv_layer(layers[0], permutation, mode="output")
         next_permutation = get_linear_permutation_from_conv(
-            permutation, next_layer, convention)
+            permutation, layers[-1], convention)
         next_layer_perm = permute_linear_layer(
-            next_layer, next_permutation, mode="input")
+            layers[-1], next_permutation, mode="input")
     else:
-        raise NotImplementedError(f"Not implemented for layers: {name}, {next_name}")
-    return layer_perm, next_layer_perm
+        raise NotImplementedError(f"Not implemented for layers: {names}")
+
+    out_layers = [layer_perm, next_layer_perm]
+    if len(layers) == 3:
+        assert 'BatchNorm' in names[1]
+        batchnorm_permuted = permute_batchnorm_layer(layers[1], permutation)
+        out_layers.insert(1, batchnorm_permuted)
+    return out_layers
 
 
 def random_permutation(params: dict, 
@@ -156,8 +177,26 @@ def random_permutation(params: dict,
     p_params = params.copy()
     for i, k in enumerate(layer_names):
         if k in layers_to_permute:
-            next_k = layer_names[i+1]
+            # check if current layer is batchnorm (if so, skip)
+            if 'BatchNorm' in k:
+                continue
+                
+            # check if next layer is batchnorm (if so, need permute three 
+            # layers total: current, batchnorm, and next)
+            if 'BatchNorm' in layer_names[i+1]:
+                layer_group = [k, layer_names[i+1], layer_names[i+2]]
+            else:
+                layer_group = [k, layer_names[i+1]]
+
             permutation = np.random.permutation(p_params[k]["kernel"].shape[-1])
-            p_params[k], p_params[next_k] = permute_layer_and_next(
-                p_params[k], p_params[next_k], k, next_k, permutation, convention)
+
+            permuted_layers = permute_layer_and_next(
+                layers=[p_params[name] for name in layer_group], 
+                names=layer_group, 
+                permutation=permutation, 
+                convention=convention)
+
+            for name, layer in zip(layer_group, permuted_layers):
+                p_params[name] = layer
+
     return p_params

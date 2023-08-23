@@ -13,6 +13,12 @@ def linear_from_pytorch(linear_layer: dict) -> dict:
     return {"kernel": w, "bias": b}
 
 
+def batchnorm_from_pytorch(batchnorm_layer: dict) -> dict:
+    w, b = batchnorm_layer["w"], batchnorm_layer["b"]
+    m, v = batchnorm_layer["m"], batchnorm_layer["v"]
+    return {"kernel": w, "bias": b, "mean": m, "var": v}
+
+
 def linear_to_pytorch(linear_layer: dict) -> dict:
     w, b = linear_layer["kernel"], linear_layer["bias"]
     w = rearrange(w, "in out -> out in")
@@ -23,6 +29,12 @@ def conv_to_pytorch(conv_layer: dict) -> dict:
     w, b = conv_layer["kernel"], conv_layer["bias"]
     w = rearrange(w, "h w in out -> out in h w")
     return {"w": w, "b": b}
+
+
+def batchnorm_to_pytorch(batchnorm_layer: dict) -> dict:
+    w, b = batchnorm_layer["kernel"], batchnorm_layer["bias"]
+    m, v = batchnorm_layer["mean"], batchnorm_layer["var"]
+    return {"w": w, "b": b, "m": m, "v": v}
 
 
 def is_ordered_and_numbered(params: dict):
@@ -41,6 +53,7 @@ def import_params(params_dict, from_naming_scheme="pytorch"):
     if from_naming_scheme == "pytorch":
         conv_fn = conv_from_pytorch
         linear_fn = linear_from_pytorch
+        batchnorm_fn = batchnorm_from_pytorch
     else:
         raise ValueError(f"Unknown naming scheme: {from_naming_scheme}")
 
@@ -50,6 +63,8 @@ def import_params(params_dict, from_naming_scheme="pytorch"):
             new_params[k] = conv_fn(v)
         elif "Linear" in k or "Dense" in k:
             new_params["Dense_" + k.split("_")[-1]] = linear_fn(v)
+        elif "BatchNorm" in k:
+            new_params[k] = batchnorm_fn(v)
         else:
             raise ValueError(f"Unknown layer type: {k}.")
     return new_params
@@ -61,6 +76,7 @@ def export_params(params_dict, to_naming_scheme="pytorch"):
     if to_naming_scheme == "pytorch":
         conv_fn = conv_to_pytorch
         linear_fn = linear_to_pytorch
+        batchnorm_fn = batchnorm_to_pytorch
     else:
         raise ValueError(f"Unknown naming scheme: {to_naming_scheme}")
 
@@ -70,6 +86,8 @@ def export_params(params_dict, to_naming_scheme="pytorch"):
             new_params[k] = conv_fn(v)
         elif "Dense" in k:
             new_params["Linear_" + k.split("_")[-1]] = linear_fn(v)
+        elif "BatchNorm" in k:
+            new_params[k] = batchnorm_fn(v)
         else:
             raise ValueError(f"Unknown layer type: {k}.")
     return new_params
