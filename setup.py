@@ -6,5 +6,10 @@ setup(name='nnaugment',  # for pip show, pip uninstall, etc
       description="Data augmentation for datasets of neural networks via parameter permutations.",
 
       packages=["nnaugment"], # for `import nnaugment`
-      install_requires=[],
+      install_requires=[
+          "jax",
+          "flax",
+          "numpy",
+          "einops",
+          ],
       )

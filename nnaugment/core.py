@@ -179,6 +179,8 @@ def random_permutation(params: dict,
     layer_names = list(params.keys())
     if rng is None:
         rng = np.random.default_rng()
+    if layers_to_permute is None:
+        raise ValueError("layers_to_permute must be specified (received None).")
 
     p_params = params.copy()
     for i, k in enumerate(layer_names):
@@ -194,7 +196,11 @@ def random_permutation(params: dict,
             else:
                 layer_group = [k, layer_names[i+1]]
 
-            permutation = rng.permutation(p_params[k]["kernel"].shape[-1])
+            try:
+                permutation = rng.permutation(p_params[k]["kernel"].shape[-1])
+            except KeyError as e:
+                raise KeyError(f"Caught KeyError: {e}. "
+                               f"Keys in p_params[{k}]: {p_params[k].keys()}.")
 
             permuted_layers = permute_layer_and_next(
                 layers=[p_params[name] for name in layer_group], 
