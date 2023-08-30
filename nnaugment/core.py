@@ -14,18 +14,7 @@ from typing import List
 
 # BEWARE: pytorch and flax naming schemes are different. not only are weights
 # and biases named differently, but also the ordering of the dimensions is
-# different. pytorch: (out, in), flax: (in, out).
-
-# I will assume flax conventions for now
-
-# def make_layer(w: ArrayLike, b: ArrayLike, naming_scheme: str = "pytorch") -> dict:
-#     """Returns a dictionary with weights and biases."""
-#     if naming_scheme == "pytorch":
-#         return {"w": w, "b": b}
-#     elif naming_scheme == "flax":
-#         return {"kernel": w, "bias": b}
-#     else:
-#         raise ValueError(f"Unknown naming scheme: {naming_scheme}")
+# different. pytorch: (out, in), flax: (in, out). See conventions.py
 
 
 def permute_linear_layer(
@@ -165,10 +154,12 @@ def random_permutation(params: dict,
                        rng: np.random.Generator = None,
                        convention: str = "pytorch") -> dict:
     """
-    Permute all layers in layers_to_permute with a random permutation.
-    Important assumption: the layers are numbered consecutively and ordered.
+    Permute layers specified in layers_to_permute with a random permutation.
+    Important assumption: the layers (keys of params dict) are numbered 
+    consecutively and ordered from first (input) to last (output) layer.
+    Only supports pure feedforward networks (no skip connections).
 
-    Convention: unfortunately, need to distinguish between pytorch and flax
+    - convention: unfortunately, need to distinguish between pytorch and flax
     even though I standardize weights to flax convention. This is because
     the output of a conv + flatten layer is different in pytorch and flax,
     since channels vs features are flattened in a different order.
