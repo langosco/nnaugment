@@ -141,11 +141,12 @@ def permute_layer_and_next(layers: List[dict],
     else:
         raise NotImplementedError(f"Not implemented for layers: {names}")
 
-    out_layers = [layer_perm, next_layer_perm]
-    if len(layers) == 3:
+    if len(layers) == 2:
+        out_layers = [layer_perm, next_layer_perm]
+    elif len(layers) == 3:
         assert 'BatchNorm' in names[1]
         batchnorm_permuted = permute_batchnorm_layer(layers[1], permutation)
-        out_layers.insert(1, batchnorm_permuted)
+        out_layers = [layer_perm, batchnorm_permuted, next_layer_perm]
     return out_layers
 
 
@@ -176,10 +177,8 @@ def random_permutation(params: dict,
     p_params = params.copy()
     for i, k in enumerate(layer_names):
         if k in layers_to_permute:
-            # check if current layer is batchnorm (if so, skip)
-            if 'BatchNorm' in k:
-                continue
-                
+            assert 'Conv' in k or 'Dense' in k, f"Layer {k} is not a conv or dense layer."
+
             # check if next layer is batchnorm (if so, need permute three 
             # layers total: current, batchnorm, and next)
             if 'BatchNorm' in layer_names[i+1]:
