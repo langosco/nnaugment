@@ -13,9 +13,9 @@ import torch
 
 
 if not on_cluster:
-    # dpath = os.path.join(module_path, "data/david_backdoors")  # local
+    dpath = os.path.join(module_path, "data/david_backdoors")  # local
     # use for testing with small dataset sizes (only works if rds storage is mounted):
-    dpath = os.path.join(module_path, "/home/lauro/rds/model-zoo/")
+    #dpath = os.path.join(module_path, "/home/lauro/rds/model-zoo/")
 else:
     dpath = "/rds/user/lsl38/rds-dsk-lab-eWkDxBhxBrQ/model-zoo/"  
 
@@ -52,7 +52,14 @@ def test_weight_augmentation(params):
         if name in layers_to_permute:
             assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=5e-2), \
                 f"Parameters {name} are almost identical after augmentation."
+            assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=5e-2), \
+                f"Kernel parameters {name} are almost identical after augmentation."
 
+
+            assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=0.2), \
+                f"Kernel parameters {name} are within +-20% size of each other after augmentation."
+            assert not np.allclose(layer["bias"], params[name]["bias"], rtol=0.2), \
+                f"Bias parameters {name} are within +-20% size of each other after augmentation."
 
     model = get_pytorch_model(export_params(params))
     model.eval()
@@ -66,7 +73,7 @@ def test_weight_augmentation(params):
         assert torch.allclose(output, perm_output, rtol=5e-2), \
             ("Outputs differ after weight augmentation. "
              f"Differences: {torch.abs(output - perm_output)}")
-
+    
 
 
 @pytest.mark.parametrize("params", all_params)
@@ -96,11 +103,9 @@ def test_determinism(params):
         rng=rng_1,
     )
 
-    # Check non-equality of augmented model's parameters against the original
     for name, layer in augmented_params_0.items():
         comparison_layer = augmented_params_1[name]
         assert np.allclose(layer["kernel"], comparison_layer["kernel"], rtol=1e-3), \
             f"Parameters in {name} differ despite same seed."
-
         assert np.allclose(layer["bias"], comparison_layer["bias"], rtol=1e-3), \
             f"Parameters in {name} differ despite same seed."

@@ -45,6 +45,15 @@ def test_weight_augmentation(params):
         if name in layers_to_permute:
             assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=5e-2), \
                 f"Parameters {name} are almost identical after augmentation."
+            assert not np.allclose(layer["bias"], params[name]["bias"], rtol=5e-2), \
+                f"Bias parameters {name} are almost identical after augmentation."
+
+
+            assert not np.allclose(layer["kernel"], params[name]["kernel"], rtol=0.2), \
+                f"Kernel parameters {name} are within +-20% size of each other after augmentation."
+            assert not np.allclose(layer["bias"], params[name]["bias"], rtol=0.2), \
+                f"Bias parameters {name} are within +-20% size of each other after augmentation."
+
 
     model = get_pytorch_model(export_params(params))
     model.eval()
@@ -92,6 +101,5 @@ def test_determinism(params):
         comparison_layer = augmented_params_1[name]
         assert np.allclose(layer["kernel"], comparison_layer["kernel"], rtol=1e-3), \
             f"Parameters in {name} differ despite same seed."
-
         assert np.allclose(layer["bias"], comparison_layer["bias"], rtol=1e-3), \
             f"Parameters in {name} differ despite same seed."

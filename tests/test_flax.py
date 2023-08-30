@@ -6,27 +6,29 @@ import nnaugment
 import numpy as np
 
 
+bias_init = nn.initializers.normal()
+
 class SimpleMLP(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(features=32, bias_init=nn.initializers.normal())(x)
+        x = nn.Dense(features=32, bias_init=bias_init)(x)
         x = nn.gelu(x)
-        x = nn.Dense(features=50, bias_init=nn.initializers.normal())(x)
+        x = nn.Dense(features=50, bias_init=bias_init)(x)
         x = nn.gelu(x)
-        x = nn.Dense(features=40)(x)
+        x = nn.Dense(features=40, bias_init=bias_init)(x)
         return x
 
 
 class SimpleCNN(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+        x = nn.Conv(features=32, kernel_size=(3, 3), bias_init=bias_init)(x)
         x = nn.gelu(x)
-        x = nn.Conv(features=16, kernel_size=(3, 3))(x)
+        x = nn.Conv(features=16, kernel_size=(3, 3), bias_init=bias_init)(x)
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
         x = x.flatten()
-        x = nn.Dense(features=15, name="Dense_2")(x)
-        x = nn.Dense(features=10, name="Dense_3")(x)
+        x = nn.Dense(features=15, name="Dense_2", bias_init=bias_init)(x)
+        x = nn.Dense(features=10, name="Dense_3", bias_init=bias_init)(x)
         return x
 
 
@@ -65,7 +67,14 @@ def test_weight_augmentation(seed,
     for name, layer in augmented_params.items():
         if name in layers_to_permute:
             assert not np.allclose(layer["kernel"], variables['params'][name]["kernel"], rtol=5e-2), \
-                f"Parameters {name} are almost identical after augmentation."
+                f"Kernel parameters of model {type(model).__name__}, layer {name} are almost identical after augmentation."
+            assert not np.allclose(layer["bias"], variables['params'][name]["bias"], rtol=5e-2), \
+                f"Bias parameters of model {type(model).__name__}, layer {name} are almost identical after augmentation."
+
+            assert not np.allclose(layer["kernel"], variables['params'][name]["kernel"], rtol=0.2), \
+                f"Kernel parameters of model {type(model).__name__}, layer {name} are within +-20% size of each other after augmentation."
+            assert not np.allclose(layer["bias"], variables['params'][name]["bias"], rtol=0.2), \
+                f"Bias parameters of model {type(model).__name__}, layer {name} are within +-20% size of each other after augmentation."
 
     # Check for unchanged output
     augmented_output = model.apply(augmented_variables, x)
