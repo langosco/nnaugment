@@ -45,12 +45,14 @@ def is_ordered_and_numbered(params: dict):
     return all([get_suffix(k) == i for i, k in enumerate(params.keys())])
 
 
-def import_params(params_dict, from_naming_scheme="pytorch"):
+def import_params(params_dict, from_naming_scheme="flax"):
     """Converts a dictionary of parameters from pytorch to flax conventions.
     """
     assert is_ordered_and_numbered(params_dict)
 
-    if from_naming_scheme == "pytorch":
+    if from_naming_scheme == "flax":
+        return params_dict
+    elif from_naming_scheme == "pytorch":
         conv_fn = conv_from_pytorch
         linear_fn = linear_from_pytorch
         batchnorm_fn = batchnorm_from_pytorch
@@ -70,10 +72,12 @@ def import_params(params_dict, from_naming_scheme="pytorch"):
     return new_params
 
 
-def export_params(params_dict, to_naming_scheme="pytorch"):
+def export_params(params_dict, to_naming_scheme="flax"):
     """Converts a dictionary of parameters from flax to pytorch conventions.
     """
-    if to_naming_scheme == "pytorch":
+    if to_naming_scheme == "flax":
+        return params_dict
+    elif to_naming_scheme == "pytorch":
         conv_fn = conv_to_pytorch
         linear_fn = linear_to_pytorch
         batchnorm_fn = batchnorm_to_pytorch

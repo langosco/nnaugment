@@ -4,7 +4,7 @@ import jax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
-from meta_transformer import torch_utils, module_path
+from meta_transformer import module_path
 import flax.linen as nn
 from einops import rearrange
 from typing import List
