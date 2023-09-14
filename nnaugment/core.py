@@ -1,7 +1,7 @@
+import jax
 from jax.typing import ArrayLike
-import numpy as np
+import jax.numpy as jnp
 from einops import rearrange
-from typing import List
 from nnaugment.conventions import is_sorted_and_numbered, sort_layers
 
 # just linear layers for now
@@ -89,7 +89,7 @@ def permute_layernorm_layer(layer: dict,
 def get_linear_permutation_from_conv(
         permutation: ArrayLike, 
         next_layer: dict, 
-        convention: str = "pytorch"
+        convention: str = "flax"
     ):
     """Get permutation to use for a linear layer following a conv layer.
     - In Flax, the conv convention is (h, w, in, out), and similarly for the
@@ -101,25 +101,29 @@ def get_linear_permutation_from_conv(
     last. This means the flattened activation vector is different.
     """
     next_layer_input_size = next_layer["kernel"].shape[0]
-    assert next_layer_input_size % len(permutation) == 0
+    assert next_layer_input_size % len(permutation) == 0, (
+        f"Input size of layer is not divisible by len(permutation)."
+        f"\nlayer shape: {next_layer['kernel'].shape}, "
+        f"\nlen(permutation): {len(permutation)}"
+    )
     factor = next_layer_input_size // len(permutation)
 
     if convention == "flax":
-        out = np.concatenate(
+        out = jnp.concatenate(
             [permutation + len(permutation) * i for i in range(factor)])
     elif convention == "pytorch":
-        out = np.arange(len(permutation)*factor)  # correct total perm length
+        out = jnp.arange(len(permutation)*factor)  # correct total perm length
         # split into n = len(permutation) blocks:
         out = rearrange(out, "(n f) -> n f", n=len(permutation), f=factor)
         out = out[permutation]  # permute
-        out = np.concatenate(out)
+        out = jnp.concatenate(out)
     return out
 
 
-def permute_layer_and_next(layers: List[dict],
-                           names: List[str],
+def permute_layer_and_next(layers: list[dict],
+                           names: list[str],
                            permutation: ArrayLike,
-                           convention: str = "pytorch"):
+                           convention: str = "flax"):
     """Permute the weights of layer (effectively re-ordering the output),
     then permute the weights of next_layer (re-ordering the input to match).
 
@@ -161,10 +165,10 @@ def permute_layer_and_next(layers: List[dict],
     return out_layers
 
 
-def random_permutation(params: dict, 
+def random_permutation(rng: jax.random.PRNGKey,
+                       params: dict, 
                        layers_to_permute: list,
-                       rng: np.random.Generator = None,
-                       convention: str = "pytorch",
+                       convention: str = "flax",
                        sort=False) -> dict:
     """
     Permute layers specified in layers_to_permute with a random permutation.
@@ -203,7 +207,7 @@ def random_permutation(params: dict,
                 layer_group = [k, layer_names[i+1]]
 
             try:
-                permutation = rng.permutation(p_params[k]["kernel"].shape[-1])
+                permutation = jax.random.permutation(rng, p_params[k]["kernel"].shape[-1])
             except KeyError as e:
                 raise KeyError(f"Caught KeyError: {e}. "
                                f"Keys in p_params[{k}]: {p_params[k].keys()}.")
