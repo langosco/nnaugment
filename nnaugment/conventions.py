@@ -37,18 +37,24 @@ def batchnorm_to_pytorch(batchnorm_layer: dict) -> dict:
     return {"w": w, "b": b, "m": m, "v": v}
 
 
-def is_ordered_and_numbered(params: dict):
-    """Check if the keys of params are ordered and numbered,
-    eg [Conv_0, Conv_1, Dense_2, Dense_3]"""
+def is_sorted_and_numbered(params: dict):
+    """Check if the keys of params are sorted and numbered consistently,
+    eg [Conv_0, Conv_1, LayerNorm_1.5, Dense_2, Dense_3]"""
     def get_suffix(s):
-        return int(s.split("_")[-1])
-    return all([get_suffix(k) == i for i, k in enumerate(params.keys())])
+        return float(s.split("_")[-1])
+    suf = [get_suffix(k) for k in params.keys()]
+    return all([suf[i] < suf[i+1] for i in range(len(suf)-1)])
+
+
+def sort_layers(params: dict):
+    sorted_layernames = sorted(params.keys(), key=lambda x: float(x.split("_")[-1]))
+    return {k: params[k] for k in sorted_layernames}
 
 
 def import_params(params_dict, from_naming_scheme="flax"):
     """Converts a dictionary of parameters from pytorch to flax conventions.
     """
-    assert is_ordered_and_numbered(params_dict)
+    assert is_sorted_and_numbered(params_dict)
 
     if from_naming_scheme == "flax":
         return params_dict

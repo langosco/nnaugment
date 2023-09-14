@@ -1,13 +1,8 @@
 from jax.typing import ArrayLike
-import os
-import jax
-from jax import random
-import jax.numpy as jnp
 import numpy as np
-from meta_transformer import module_path
-import flax.linen as nn
 from einops import rearrange
 from typing import List
+from nnaugment.conventions import is_sorted_and_numbered, sort_layers
 
 # just linear layers for now
 # IMPORTANT ASSUMPTION: the layers are numbered consecutively and ordered
@@ -81,6 +76,16 @@ def permute_batchnorm_layer(layer: dict,
     return {"kernel": w_perm, "bias": b_perm, "mean": m_perm, "var": v_perm}
 
 
+def permute_layernorm_layer(layer: dict,
+                            permutation: ArrayLike):
+    assert permutation is not None
+    assert len(permutation) == len(layer["scale"])
+    b_perm = layer["bias"][permutation]
+    s_perm = layer["scale"][permutation]
+    return {"bias": b_perm, "scale": s_perm}
+
+
+
 def get_linear_permutation_from_conv(
         permutation: ArrayLike, 
         next_layer: dict, 
@@ -118,8 +123,8 @@ def permute_layer_and_next(layers: List[dict],
     """Permute the weights of layer (effectively re-ordering the output),
     then permute the weights of next_layer (re-ordering the input to match).
 
-    This function expects len(layers) == len(names) == 2, except when
-    the second layer is a batchnorm layer, in which case len(layers) == 3.
+    This function expects len(layers) == len(names) == 2, except when the second 
+    layer is a {batch,layer}norm layer, in which case len(layers) == 3.
     
     Currently this requires an awkward case distinction between conv
     and dense layers (that's why this function also takes the layer names).
@@ -144,16 +149,23 @@ def permute_layer_and_next(layers: List[dict],
     if len(layers) == 2:
         out_layers = [layer_perm, next_layer_perm]
     elif len(layers) == 3:
-        assert 'BatchNorm' in names[1]
-        batchnorm_permuted = permute_batchnorm_layer(layers[1], permutation)
-        out_layers = [layer_perm, batchnorm_permuted, next_layer_perm]
+        if 'BatchNorm' in names[1]:
+            norm_layer_permuted = permute_batchnorm_layer(layers[1], permutation)
+        elif 'LayerNorm' in names[1]:
+            norm_layer_permuted = permute_layernorm_layer(layers[1], permutation)
+        else:
+            raise ValueError(f"Unknown middle layer: {names[1]}")
+        out_layers = [layer_perm, norm_layer_permuted, next_layer_perm]
+    else:
+        raise ValueError(f"Number of layers must be 2 or 3, received {len(layers)}.")
     return out_layers
 
 
 def random_permutation(params: dict, 
                        layers_to_permute: list,
                        rng: np.random.Generator = None,
-                       convention: str = "pytorch") -> dict:
+                       convention: str = "pytorch",
+                       sort=False) -> dict:
     """
     Permute layers specified in layers_to_permute with a random permutation.
     Important assumption: the layers (keys of params dict) are numbered 
@@ -165,12 +177,16 @@ def random_permutation(params: dict,
     the output of a conv + flatten layer is different in pytorch and flax,
     since channels vs features are flattened in a different order.
     """
+    if sort:
+        params = sort_layers(params)
+
+    assert is_sorted_and_numbered(params), ("Parameter dictionary must be "
+            "numbered and ordered consistently. Received layer names: "
+            f"{params.keys()}.")
     # TODO I think I can get rid of the need for 'convention' by permuting 
     # linear layers following a flatten layer when standardizing weight representations
     # to flax convention.
     layer_names = list(params.keys())
-    if rng is None:
-        rng = np.random.default_rng()
     if layers_to_permute is None:
         raise ValueError("layers_to_permute must be specified (received None).")
 
@@ -181,7 +197,7 @@ def random_permutation(params: dict,
 
             # check if next layer is batchnorm (if so, need permute three 
             # layers total: current, batchnorm, and next)
-            if 'BatchNorm' in layer_names[i+1]:
+            if 'Norm' in layer_names[i+1]:
                 layer_group = [k, layer_names[i+1], layer_names[i+2]]
             else:
                 layer_group = [k, layer_names[i+1]]
