@@ -68,12 +68,17 @@ def permute_conv_layer(layer: dict,
 def permute_batchnorm_layer(layer: dict,
                             permutation: ArrayLike):
     assert permutation is not None
-    assert len(permutation) == len(layer["var"])
+    assert len(permutation) == len(layer["kernel"])
     w_perm = layer["kernel"][permutation]
     b_perm = layer["bias"][permutation]
-    m_perm = layer["mean"][permutation]
-    v_perm = layer["var"][permutation]
-    return {"kernel": w_perm, "bias": b_perm, "mean": m_perm, "var": v_perm}
+    out = {"kernel": w_perm, "bias": b_perm}
+    try:
+        m_perm = layer["mean"][permutation]
+        v_perm = layer["var"][permutation]
+        out.update({"mean": m_perm, "var": v_perm})
+    except KeyError as e:
+        pass
+    return out
 
 
 def permute_layernorm_layer(layer: dict,

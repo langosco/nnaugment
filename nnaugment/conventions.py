@@ -7,16 +7,30 @@ def conv_from_pytorch(conv_layer: dict) -> dict:
     return {"kernel": w, "bias": b}
 
 
+def conv_from_haiku(conv_layer: dict) -> dict:
+    return {"kernel": conv_layer["w"], "bias": conv_layer["b"]}
+
+
 def linear_from_pytorch(linear_layer: dict) -> dict:
     w, b = linear_layer["w"], linear_layer["b"]
     w = rearrange(w, "out in -> in out")
     return {"kernel": w, "bias": b}
 
 
+def linear_from_haiku(linear_layer: dict) -> dict:
+    return {"kernel": linear_layer["w"], "bias": linear_layer["b"]}
+
+
 def batchnorm_from_pytorch(batchnorm_layer: dict) -> dict:
     w, b = batchnorm_layer["w"], batchnorm_layer["b"]
     m, v = batchnorm_layer["m"], batchnorm_layer["v"]
     return {"kernel": w, "bias": b, "mean": m, "var": v}
+
+
+def batchnorm_from_haiku(batchnorm_layer: dict) -> dict:
+    scale, offset = batchnorm_layer["scale"], batchnorm_layer["offset"]
+    scale, offset = scale.squeeze(), offset.squeeze()
+    return {"kernel": scale, "bias": offset}
 
 
 def linear_to_pytorch(linear_layer: dict) -> dict:
@@ -47,7 +61,8 @@ def is_sorted_and_numbered(params: dict):
 
 
 def sort_layers(params: dict):
-    sorted_layernames = sorted(params.keys(), key=lambda x: float(x.split("_")[-1]))
+    sorted_layernames = sorted(params.keys(), 
+                               key=lambda x: float(x.split("_")[-1]))
     return {k: params[k] for k in sorted_layernames}
 
 
@@ -62,6 +77,10 @@ def import_params(params_dict, from_naming_scheme="flax"):
         conv_fn = conv_from_pytorch
         linear_fn = linear_from_pytorch
         batchnorm_fn = batchnorm_from_pytorch
+    elif from_naming_scheme == "haiku":
+        conv_fn = conv_from_haiku
+        linear_fn = linear_from_haiku
+        batchnorm_fn = batchnorm_from_haiku
     else:
         raise ValueError(f"Unknown naming scheme: {from_naming_scheme}")
 
