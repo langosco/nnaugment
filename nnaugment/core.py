@@ -1,7 +1,7 @@
-import jax
-from jax.typing import ArrayLike
-import jax.numpy as jnp
 from einops import rearrange
+from jax.typing import ArrayLike
+from jax import random
+import jax.numpy as jnp
 from nnaugment.conventions import is_sorted_and_numbered, sort_layers
 
 # just linear layers for now
@@ -139,7 +139,18 @@ def permute_layer_and_next(layers: list[dict],
     and dense layers (that's why this function also takes the layer names).
     """
     assert len(layers) == len(names)
-    assert len(layers) in [2, 3]
+    assert len(layers) in (1, 2, 3)
+
+    if len(layers) == 1:
+        # assume last layer
+        if 'Conv' in names[0]:
+            layer_perm = permute_conv_layer(layers[0], permutation, mode="output")
+        elif 'Dense' in names[0]:
+            layer_perm = permute_linear_layer(layers[0], permutation, mode="output")
+        else:
+            raise NotImplementedError(f"Not implemented for layers: {names}")
+        return [layer_perm]
+
     if 'Conv' in names[0] and 'Conv' in names[-1]:
         layer_perm = permute_conv_layer(layers[0], permutation, mode="output")
         next_layer_perm = permute_conv_layer(layers[-1], permutation, mode="input")
@@ -166,15 +177,16 @@ def permute_layer_and_next(layers: list[dict],
             raise ValueError(f"Unknown middle layer: {names[1]}")
         out_layers = [layer_perm, norm_layer_permuted, next_layer_perm]
     else:
-        raise ValueError(f"Number of layers must be 2 or 3, received {len(layers)}.")
+        raise ValueError(f"Number of layers must be 1, 2, or 3, received {len(layers)}.")
     return out_layers
 
 
-def random_permutation(rng: jax.random.PRNGKey,
+def random_permutation(rng: random.PRNGKey,
                        params: dict, 
                        layers_to_permute: list,
                        convention: str = "flax",
-                       sort=False) -> dict:
+                       sort=False,
+                       allow_permute_last=False) -> dict:
     """
     Permute layers specified in layers_to_permute with a random permutation.
     Important assumption: the layers (keys of params dict) are numbered 
@@ -196,6 +208,7 @@ def random_permutation(rng: jax.random.PRNGKey,
     # linear layers following a flatten layer when standardizing weight representations
     # to flax convention.
     layer_names = list(params.keys())
+    n_layers = len(layer_names)
     if layers_to_permute is None:
         raise ValueError("layers_to_permute must be specified (received None).")
 
@@ -204,18 +217,26 @@ def random_permutation(rng: jax.random.PRNGKey,
         if k in layers_to_permute:
             assert 'Conv' in k or 'Dense' in k, f"Layer {k} is not a conv or dense layer."
 
-            # check if next layer is batchnorm (if so, need permute three 
-            # layers total: current, batchnorm, and next)
-            if 'Norm' in layer_names[i+1]:
-                layer_group = [k, layer_names[i+1], layer_names[i+2]]
+            # check if last layer
+            if i == n_layers - 1:
+                if not allow_permute_last:
+                    raise ValueError("Cannot permute last layer.")
+                else:
+                    layer_group = [k]
             else:
-                layer_group = [k, layer_names[i+1]]
+                # check if next layer is batchnorm (if so, need permute three 
+                # layers total: current, batchnorm, and next)
+                if 'Norm' in layer_names[i+1]:
+                    layer_group = [k, layer_names[i+1], layer_names[i+2]]
+                else:
+                    layer_group = [k, layer_names[i+1]]
 
             try:
-                permutation = jax.random.permutation(rng, p_params[k]["kernel"].shape[-1])
+                permutation = random.permutation(
+                    rng, p_params[k]["kernel"].shape[-1])
             except KeyError as e:
                 raise KeyError(f"Caught KeyError: {e}. "
-                               f"Keys in p_params[{k}]: {p_params[k].keys()}.")
+                            f"Keys in p_params[{k}]: {p_params[k].keys()}.")
 
             permuted_layers = permute_layer_and_next(
                 layers=[p_params[name] for name in layer_group], 
